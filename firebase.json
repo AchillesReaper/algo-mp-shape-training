@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "target": "mp-shape-training",
+    "public": "build",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

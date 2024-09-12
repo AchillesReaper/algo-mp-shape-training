@@ -1,0 +1,16 @@
+{
+  "projects": {
+    "default": "algo-marketprofile"
+  },
+  "targets": {
+    "algo-marketprofile": {
+      "hosting": {
+        "mp-shape-training": [
+          "mp-shape-training"
+        ]
+      }
+    }
+  },
+  "etags": {},
+  "dataconnectEmulatorConfig": {}
+}
