@@ -49,15 +49,18 @@ export default function MarketProfilePlot() {
 
         // calculate shape != ''
         let completionCount = 0
-        for (var mpCard of mpStack!) {
+        const updatedStack = [...mpStack!]
+        updatedStack[cardNumber].shape = selectedShape
+
+        for (var mpCard of updatedStack!) {
             (['b', 'p', 'n', 'double', 'box', 'undefined_shape'].includes(mpCard.shape)) && completionCount++
 
             console.log('date: ', mpCard.trade_date, 'shape: ', mpCard.shape, 'count: ', completionCount);
         }
         console.log('completion count: ', completionCount);
 
-        const completionRatio = (completionCount + 1) / mpStack!.length
-        console.log('completion ratio: ', completionRatio);
+        const completionRatio = completionCount / mpStack!.length
+        console.log('completion ratio: ', completionRatio.toFixed(4));
 
         if (completionRatio > 1) {
             // update the corresponding shape of the trade date only
@@ -107,7 +110,7 @@ export default function MarketProfilePlot() {
         setPlotData({ 'x_values': x_values, 'y_values': y_values, 'color_values': color_values })
     }, [mpStack, cardNumber])
 
-    // get data from fire store
+
     useEffect(() => {
         setMpstack(undefined)
         if (!selectedStock || !targetMonth) return
@@ -127,6 +130,7 @@ export default function MarketProfilePlot() {
         return unsubscribe
     }, [targetMonth])
 
+
     useEffect(() => {
         setMonthList(undefined)
         if (!selectedStock || !stockList) return
@@ -135,18 +139,22 @@ export default function MarketProfilePlot() {
         setTargetMonth(sortedMonths[0][0])
     }, [selectedStock])
 
+    
     useEffect(() => {
-        setSelectedStock(undefined)
-        stockList && setSelectedStock(Object.keys(stockList)[0])
+        if (!stockList) return
+        if (!selectedStock || !Object.keys(stockList).includes(selectedStock)) {
+            setSelectedStock(Object.keys(stockList)[0])
+        } 
     }, [stockList])
 
     // getstock list from database
     useEffect(() => {
         const unsubscribe_sl = onSnapshot(monthLogDocRef, (stocklistDoc) => {
             setStockList(undefined)
-            setSelectedStock(undefined)
             if (stocklistDoc.exists()) {
-                setStockList(stocklistDoc.data())
+                const sortedStocks = Object.entries(stocklistDoc.data()).sort(([a,], [b,]) => Number(a.split('_')[1]) - Number(b.split('_')[1]))
+                setStockList(Object.fromEntries(sortedStocks))
+                // setStockList(stocklistDoc.data())
 
             }
         })
@@ -212,8 +220,8 @@ export default function MarketProfilePlot() {
 
                     <Grid item xs={12} md={6}>
                         <Box sx={btnBox}>
-                        <Button variant="contained" onClick={() => setSelectedShape('undefined_shape')}> undefined </Button>
-                        <Button variant="contained" onClick={() => setSelectedShape('box')}> Box </Button>
+                            <Button variant="contained" onClick={() => setSelectedShape('undefined_shape')}> undefined </Button>
+                            <Button variant="contained" onClick={() => setSelectedShape('box')}> Box </Button>
                             <Button variant="contained" onClick={() => setSelectedShape('double')}> Double </Button>
                         </Box>
                     </Grid>
