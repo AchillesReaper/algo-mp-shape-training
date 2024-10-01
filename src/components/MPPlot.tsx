@@ -1,18 +1,18 @@
 import Plot from 'react-plotly.js';
-
-import { data } from "../data"
 import { useEffect, useState } from 'react';
-import { Avatar, Box, Button, Container, CssBaseline, Divider, FormControl, Grid, InputLabel, LinearProgress, MenuItem, Paper, Select, Typography } from '@mui/material';
+import { Box, Button, Container, Divider, FormControl, Grid, InputLabel, MenuItem, Paper, Select, Typography } from '@mui/material';
 import { btnBox, LinearProgressWithLabel, MessageBox, styleMainColBox } from './CommonComponents';
-import { collection, CollectionReference, doc, DocumentReference, onSnapshot, or, query, updateDoc, where } from 'firebase/firestore';
+import { collection, CollectionReference, doc, DocumentReference, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../utils/firebaseConfig';
 import { df_row, ShapeType } from '../utils/dataInterfaces';
-import { clear } from 'console';
+
 
 export default function MarketProfilePlot() {
     const [infoMessage, setInfoMessage] = useState<string | undefined>(undefined)
     const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined)
     const [successMessage, setSuccessMessage] = useState<string | undefined>(undefined)
+    // const [completionRatio , setCompletionRatio] = useState<number | undefined>(undefined)
+    const [completionRatio , setCompletionRatio] = useState<number>(0)
 
     const [stockList, setStockList] = useState<{ [key: string]: { [key: string]: number } } | undefined>(undefined)
     const [selectedStock, setSelectedStock] = useState<string | undefined>(undefined)
@@ -28,70 +28,35 @@ export default function MarketProfilePlot() {
         if (cardNumber < mpStack!.length - 1) {
             setCardNumber(cardNumber + 1)
         } else {
-            const currentMonthIndex = Object.keys(monthList!).indexOf(targetMonth!)
-            if (currentMonthIndex < monthList!.length - 1) {
-                setTargetMonth(Object.keys(monthList!)[currentMonthIndex + 1])
-            } else {
-                const selectedStockIndex = Object.keys(stockList!).indexOf(selectedStock!)
-                if (selectedStockIndex < Object.keys(stockList!).length - 1) {
-                    setInfoMessage(`No more trade date in ${targetMonth} for ${selectedStock}.`)
-                    setSelectedStock(Object.keys(stockList!)[selectedStockIndex + 1])
-                } else {
-                    setInfoMessage('End of the stock list')
-                }
-            }
+            const nextMonthIndex = (Object.keys(monthList!).indexOf(targetMonth!)+1) % Object.keys(monthList!).length
+            setTargetMonth(Object.keys(monthList!)[nextMonthIndex])
         }
     }
 
     function handleShapeChange() {
         if (!selectedShape || !stockList || !selectedStock || !targetMonth) return
         const mpDocRef: DocumentReference = doc(db, `/market_profile/equity/${selectedStock}/${mpStack![cardNumber].trade_date}`)
-
-        // calculate shape != ''
-        let completionCount = 0
-        const updatedStack = [...mpStack!]
-        updatedStack[cardNumber].shape = selectedShape
-
-        for (var mpCard of updatedStack!) {
-            (['b', 'p', 'n', 'double', 'box', 'undefined_shape'].includes(mpCard.shape)) && completionCount++
-
-            console.log('date: ', mpCard.trade_date, 'shape: ', mpCard.shape, 'count: ', completionCount);
-        }
-        console.log('completion count: ', completionCount);
-
-        const completionRatio = completionCount / mpStack!.length
-        console.log('completion ratio: ', completionRatio.toFixed(4));
-
-        if (completionRatio > 1) {
-            // update the corresponding shape of the trade date only
-            updateDoc(mpDocRef, { shape: selectedShape }).then(() => {
-                setCardNumber(cardNumber + 1)
-                console.log('shape updated')
-            }).catch((error) => {
-                console.log(error)
-            })
-        } else {
-            // update the shape of the trade date and month log
-            let monthLog = { ...stockList }
-            monthLog[selectedStock][targetMonth] = completionRatio
-            updateDoc(mpDocRef, { shape: selectedShape }).then(() => {
-                console.log('shape updated')
-                setCardNumber(cardNumber + 1)
-            }).catch((error) => {
-                console.log(error)
-            })
-            updateDoc(monthLogDocRef, monthLog).then(() => {
-                console.log('month log updated')
-                console.log(monthLog)
-            }).catch((error) => {
-                console.log(error)
-            })
-        }
+        // update the shape of the trade date and call handleNext
+        updateDoc(mpDocRef, { shape: selectedShape }).then(() => {
+            handleNext()
+        }).catch((error) => {
+            console.log(error)
+        })
     }
 
     useEffect(() => {
         setPlotData(undefined)
         if (!mpStack) return
+        // calculate completion ratio
+        let completionCount = 0
+        for (var card of mpStack!) {
+            if (['b', 'p', 'n', 'double', 'box', 'undefined_shape'].includes(card.shape)) {
+                completionCount++
+            }
+        }
+        setCompletionRatio(completionCount / mpStack.length)
+
+        // calculate plot data
         const mpCard = mpStack[cardNumber]
         const y_values = Object.keys(mpCard.tpo_count).map(Number)
         const x_values = Object.values(mpCard.tpo_count)
@@ -114,7 +79,6 @@ export default function MarketProfilePlot() {
     useEffect(() => {
         setMpstack(undefined)
         if (!selectedStock || !targetMonth) return
-        const tradeDateRange: string[] = []
         const stockColRef: CollectionReference = collection(db, '/market_profile/equity', selectedStock)
         const q = query(stockColRef, where('trade_month', '==', targetMonth))
 
@@ -136,15 +100,31 @@ export default function MarketProfilePlot() {
         if (!selectedStock || !stockList) return
         const sortedMonths = Object.entries(stockList[selectedStock]).sort(([a,], [b,]) => Number(b.replace('-', '')) - Number(a.replace('-', '')))
         setMonthList(Object.fromEntries(sortedMonths))
-        setTargetMonth(sortedMonths[0][0])
+        if (targetMonth && monthList && Object.keys(monthList).includes(targetMonth)) {
+            const stockColRef: CollectionReference = collection(db, '/market_profile/equity', selectedStock)
+            const q = query(stockColRef, where('trade_month', '==', targetMonth))
+
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const data: df_row[] = []
+                snapshot.forEach((tradeDateDoc) => {
+                    data.push(tradeDateDoc.data() as df_row)
+                })
+                setMpstack(data)
+                setCardNumber(0)
+                setSelectedShape(undefined)
+            })
+            return unsubscribe
+        } else {
+            setTargetMonth(sortedMonths[0][0])
+        }
     }, [selectedStock])
 
-    
+
     useEffect(() => {
         if (!stockList) return
         if (!selectedStock || !Object.keys(stockList).includes(selectedStock)) {
             setSelectedStock(Object.keys(stockList)[0])
-        } 
+        }
     }, [stockList])
 
     // getstock list from database
@@ -190,9 +170,9 @@ export default function MarketProfilePlot() {
                             </Select>
                         </FormControl>}
                     </Grid>
-                    {plotData && targetMonth && monthList && mpStack &&
+                    {plotData && mpStack &&
                         <Grid item xs={12}>
-                            <LinearProgressWithLabel value={monthList[targetMonth] * 100} />
+                            <LinearProgressWithLabel value={completionRatio * 100} />
                             <Paper elevation={6} sx={{ borderRadius: 4, width: '100%', height: '200' }} >
                                 <Plot
                                     data={[{
@@ -204,7 +184,7 @@ export default function MarketProfilePlot() {
                                         marker: { color: plotData.color_values },
                                     }]}
                                     layout={{
-                                        title: `MP Shape ${mpStack[cardNumber].trade_date}: ${mpStack[cardNumber].shape}`,
+                                        title: `${selectedStock} ${mpStack[cardNumber].trade_date}: ${mpStack[cardNumber].shape}`,
                                         margin: { l: 50, r: 25, t: 50, b: 25 },
                                         dragmode: false
                                         // paper_bgcolor: '#f0f0f0',
