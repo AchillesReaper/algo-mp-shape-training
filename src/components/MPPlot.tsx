@@ -1,7 +1,7 @@
 import Plot from 'react-plotly.js';
 import { useEffect, useState } from 'react';
 import { Box, Button, Container, Divider, FormControl, Grid, InputLabel, MenuItem, Paper, Select, Typography } from '@mui/material';
-import { btnBox, LinearProgressWithLabel, MessageBox, styleMainColBox } from './CommonComponents';
+import { btnBox, LinearProgressWithLabel, LoadingBox, MessageBox, styleMainColBox } from './CommonComponents';
 import { collection, CollectionReference, doc, DocumentReference, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../utils/firebaseConfig';
 import { df_row, ShapeType } from '../utils/dataInterfaces';
@@ -11,7 +11,8 @@ export default function MarketProfilePlot() {
     const [infoMessage, setInfoMessage] = useState<string | undefined>(undefined)
     const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined)
     const [successMessage, setSuccessMessage] = useState<string | undefined>(undefined)
-    // const [completionRatio , setCompletionRatio] = useState<number | undefined>(undefined)
+    const [isLoading, setIsLoading] = useState<boolean>(true)
+
     const [completionRatio , setCompletionRatio] = useState<number>(0)
 
     const [stockList, setStockList] = useState<{ [key: string]: { [key: string]: number } } | undefined>(undefined)
@@ -28,8 +29,19 @@ export default function MarketProfilePlot() {
         if (cardNumber < mpStack!.length - 1) {
             setCardNumber(cardNumber + 1)
         } else {
+            setIsLoading(true)
+            let monthLog = { ...stockList }
+            monthLog[selectedStock!][targetMonth!] = completionRatio
+            updateDoc(monthLogDocRef, monthLog).then(() => {
+                console.log('month log updated')
+                console.log(monthLog)
+            }).catch((error) => {
+                console.log(error)
+            })
+            setMonthList({...monthList, [targetMonth!]: completionRatio})
             const nextMonthIndex = (Object.keys(monthList!).indexOf(targetMonth!)+1) % Object.keys(monthList!).length
             setTargetMonth(Object.keys(monthList!)[nextMonthIndex])
+            setIsLoading(false)
         }
     }
 
@@ -45,6 +57,7 @@ export default function MarketProfilePlot() {
     }
 
     useEffect(() => {
+        setIsLoading(true)
         setPlotData(undefined)
         if (!mpStack) return
         // calculate completion ratio
@@ -73,10 +86,12 @@ export default function MarketProfilePlot() {
             }
         }
         setPlotData({ 'x_values': x_values, 'y_values': y_values, 'color_values': color_values })
+        setIsLoading(false)
     }, [mpStack, cardNumber])
 
 
     useEffect(() => {
+        setIsLoading(true)
         setMpstack(undefined)
         if (!selectedStock || !targetMonth) return
         const stockColRef: CollectionReference = collection(db, '/market_profile/equity', selectedStock)
@@ -96,6 +111,7 @@ export default function MarketProfilePlot() {
 
 
     useEffect(() => {
+        setIsLoading(true)
         setMonthList(undefined)
         if (!selectedStock || !stockList) return
         const sortedMonths = Object.entries(stockList[selectedStock]).sort(([a,], [b,]) => Number(b.replace('-', '')) - Number(a.replace('-', '')))
@@ -117,6 +133,7 @@ export default function MarketProfilePlot() {
         } else {
             setTargetMonth(sortedMonths[0][0])
         }
+        setIsLoading(false)
     }, [selectedStock])
 
 
@@ -125,6 +142,7 @@ export default function MarketProfilePlot() {
         if (!selectedStock || !Object.keys(stockList).includes(selectedStock)) {
             setSelectedStock(Object.keys(stockList)[0])
         }
+        setIsLoading(false)
     }, [stockList])
 
     // getstock list from database
@@ -134,8 +152,6 @@ export default function MarketProfilePlot() {
             if (stocklistDoc.exists()) {
                 const sortedStocks = Object.entries(stocklistDoc.data()).sort(([a,], [b,]) => Number(a.split('_')[1]) - Number(b.split('_')[1]))
                 setStockList(Object.fromEntries(sortedStocks))
-                // setStockList(stocklistDoc.data())
-
             }
         })
         return unsubscribe_sl
@@ -225,10 +241,11 @@ export default function MarketProfilePlot() {
                 </Grid>
             </Box>
 
+            {isLoading && <LoadingBox open={isLoading} onClose={() => setIsLoading(false)} />}
             {infoMessage && <MessageBox open={infoMessage ? true : false} onClose={() => setInfoMessage(undefined)} type='info' message={infoMessage} />}
             {errorMessage && <MessageBox open={errorMessage ? true : false} onClose={() => setErrorMessage(undefined)} type='error' message={errorMessage} />}
             {successMessage && <MessageBox open={successMessage ? true : false} onClose={() => setErrorMessage(undefined)} type='success' message={successMessage} />}
-
+            
         </Container>
 
     );
